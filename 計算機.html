@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>eBay運費與費用計算機 - 完整版</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 20px auto;
+      padding: 20px;
+      background-color: #f4f4f4;
+    }
+    h1 {
+      text-align: center;
+      color: #333;
+    }
+    form {
+      background-color: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: inline-block;
+      width: 200px;
+      font-weight: bold;
+      color: #555;
+    }
+    input, select {
+      width: 200px;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    .result-box {
+      margin-top: 20px;
+      padding: 15px;
+      background-color: #fff;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    .result-box p {
+      margin: 5px 0;
+      color: #333;
+    }
+    .result-box strong {
+      color: #007bff;
+    }
+    .final-amount {
+      font-size: 24px;
+      font-weight: bold;
+      color: #28a745;
+    }
+    .warning {
+      color: red;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1>eBay運費與費用計算機 - 完整版</h1>
+  <form id="shippingCalculator">
+    <div class="form-group">
+      <label for="length">長（cm）:</label>
+      <input type="number" id="length" min="1" step="0.1" required>
+    </div>
+    <div class="form-group">
+      <label for="width">寬（cm）:</label>
+      <input type="number" id="width" min="1" step="0.1" required>
+    </div>
+    <div class="form-group">
+      <label for="height">高（cm）:</label>
+      <input type="number" id="height" min="1" step="0.1" required>
+    </div>
+    <div class="form-group">
+      <label for="weight">重量（kg）:</label>
+      <input type="number" id="weight" min="0.1" step="0.01" required>
+    </div>
+    <div class="form-group">
+      <label for="price">售價（新台幣）:</label>
+      <input type="number" id="price" min="1" step="1" required>
+    </div>
+    <div class="form-group">
+      <label for="destination">目的地:</label>
+      <select id="destination" required>
+        <option value="" disabled selected>請選擇</option>
+        <option value="germany">德國</option>
+        <option value="usa">美國</option>
+        <option value="japan">日本</option>
+        <option value="canada">加拿大</option>
+        <option value="uk">英國</option>
+        <option value="france">法國</option>
+        <option value="italy">義大利</option>
+      </select>
+    </div>
+    <!-- 動態匯率：由 API 自動更新，不可編輯 -->
+    <div class="form-group">
+      <label for="exchangeRate">匯率（新台幣/美元）:</label>
+      <input type="number" id="exchangeRate" step="0.01" readonly>
+    </div>
+    <!-- 燃油附加費：由 API 自動取得，不可編輯 -->
+    <div class="form-group">
+      <label for="fuelSurcharge">燃油附加費（%）:</label>
+      <input type="number" id="fuelSurcharge" step="0.1" readonly>
+    </div>
+    <!-- 進口稅費負擔選項 -->
+    <div class="form-group">
+      <label for="taxByBuyer">進口稅費由買家負擔:</label>
+      <input type="checkbox" id="taxByBuyer">
+    </div>
+    <!-- 投保選項 -->
+    <div class="form-group">
+      <label for="insurance">是否投保:</label>
+      <input type="checkbox" id="insurance">
+    </div>
+    <button type="button" onclick="calculateShipping()">計算</button>
+  </form>
+  <div id="result" class="result-box"></div>
+
+  <script>
+    // 全域變數存放 API 取得的數據
+    let currentExchangeRate = null;
+    let currentFuelSurchargePercent = null;
+
+    // 取得匯率資料：使用 ExchangeRate-API (以 USD 為基底)
+    function fetchExchangeRate() {
+      fetch('https://api.exchangerate-api.com/v4/latest/USD')
+        .then(response => response.json())
+        .then(data => {
+          // 取得 TWD 匯率：1 美元 = ? 新台幣
+          currentExchangeRate = data.rates.TWD;
+          document.getElementById('exchangeRate').value = currentExchangeRate.toFixed(2);
+        })
+        .catch(error => {
+          console.error('獲取匯率失敗:', error);
+          // 若 API 失敗，採用預設值
+          currentExchangeRate = 30;
+          document.getElementById('exchangeRate').value = currentExchangeRate.toFixed(2);
+        });
+    }
+
+    // 取得燃油附加費：此為範例 API，請替換成你所使用的正確 API 端點及金鑰
+    function fetchFuelSurcharge() {
+      fetch('https://api.example.com/fuel-price')
+        .then(response => response.json())
+        .then(data => {
+          // 假設 API 回傳格式為 { "fuelSurchargePercent": 5 }，代表燃油附加費為 5%
+          currentFuelSurchargePercent = data.fuelSurchargePercent;
+          document.getElementById('fuelSurcharge').value = currentFuelSurchargePercent.toFixed(1);
+        })
+        .catch(error => {
+          console.error('獲取燃油附加費失敗:', error);
+          // 若 API 失敗，則預設無燃油附加費
+          currentFuelSurchargePercent = 0;
+          document.getElementById('fuelSurcharge').value = currentFuelSurchargePercent.toFixed(1);
+        });
+    }
+
+    // 當頁面載入時自動呼叫 API 取得最新資料
+    window.addEventListener('load', function(){
+      fetchExchangeRate();
+      fetchFuelSurcharge();
+    });
+
+    // 定義各國運費參數：根據計費重量階段給出不同費率
+    const shippingRates = {
+      germany: { threshold1: 0.45, cost1: 10, threshold2: 0.9, cost2: 12, baseCost: 20, incremental: 10 },
+      usa:     { threshold1: 0.45, cost1: 8,  threshold2: 0.9, cost2: 10, baseCost: 20, incremental: 10 },
+      japan:   { threshold1: 0.45, cost1: 15, threshold2: 0.9, cost2: 20, baseCost: 20, incremental: 10 },
+      canada:  { threshold1: 0.45, cost1: 11, threshold2: 0.9, cost2: 13, baseCost: 20, incremental: 10 },
+      uk:      { threshold1: 0.45, cost1: 9,  threshold2: 0.9, cost2: 11, baseCost: 20, incremental: 10 },
+      france:  { threshold1: 0.45, cost1: 10, threshold2: 0.9, cost2: 12, baseCost: 20, incremental: 10 },
+      italy:   { threshold1: 0.45, cost1: 10, threshold2: 0.9, cost2: 12, baseCost: 20, incremental: 10 }
+    };
+
+    // 定義各國進口稅率規則
+    const taxRates = {
+      germany: 0.19,
+      usa: 0,
+      japan: 0.10,
+      canada: 0.15,
+      uk: 0.20,
+      france: 0.20,
+      italy: 0.22
+    };
+
+    // 計算運費與各項費用
+    function calculateShipping() {
+      // 讀取輸入值
+      const length = parseFloat(document.getElementById('length').value);
+      const width = parseFloat(document.getElementById('width').value);
+      const height = parseFloat(document.getElementById('height').value);
+      const weight = parseFloat(document.getElementById('weight').value);
+      const price = parseFloat(document.getElementById('price').value);
+      const destination = document.getElementById('destination').value;
+      const insuranceChecked = document.getElementById('insurance').checked;
+      const taxByBuyer = document.getElementById('taxByBuyer').checked;
+
+      if (!length || !width || !height || !weight || !price || !destination) {
+        alert('請填寫所有必填欄位！');
+        return;
+      }
+
+      if (!currentExchangeRate) {
+        alert('匯率資料尚未獲取，請稍後再試！');
+        return;
+      }
+
+      // 體積計算
+      const volume = length * width * height;
+      const volumetricWeight = volume / 5000;
+      const billingWeight = Math.max(weight, volumetricWeight);
+
+      // 計算進口稅費
+      const taxRate = (taxRates[destination] !== undefined) ? taxRates[destination] : 0.1;
+      let tax = price * taxRate;
+      // 若進口稅費由買家負擔，則稅費視為 0
+      if (taxByBuyer) {
+        tax = 0;
+      }
+
+      // 根據國家與計費重量計算運費（美元）
+      let shippingCostUSD;
+      const rates = shippingRates[destination] || { threshold1: 0.45, cost1: 15, threshold2: 0.9, cost2: 20, baseCost: 20, incremental: 10 };
+      if (billingWeight <= rates.threshold1) {
+        shippingCostUSD = rates.cost1;
+      } else if (billingWeight <= rates.threshold2) {
+        shippingCostUSD = rates.cost2;
+      } else {
+        shippingCostUSD = rates.baseCost + (billingWeight - rates.threshold2) * rates.incremental;
+      }
+
+      // 根據燃油附加費 API 結果調整運費
+      let fuelAdjustment = 1;
+      if (currentFuelSurchargePercent) {
+        fuelAdjustment = 1 + currentFuelSurchargePercent / 100;
+      }
+      let shippingCostUSDAdjusted = shippingCostUSD * fuelAdjustment;
+      const shippingCostTWD = shippingCostUSDAdjusted * currentExchangeRate;
+
+      // 平台手續費與其他成本
+      const transactionFee = price * 0.129;
+      const internationalFee = price * 0.013;
+      const domesticShipping = 120;
+      const packaging = 50;
+      
+      // 包裹保險費（若投保則為售價的 0.5%）
+      let insuranceFee = 0;
+      if (insuranceChecked) {
+        insuranceFee = price * 0.005;
+      }
+
+      // 總成本計算
+      const totalCost = shippingCostTWD + transactionFee + internationalFee + domesticShipping + packaging + tax + insuranceFee;
+      const finalAmount = price - totalCost;
+
+      // 考慮匯率波動 (±1%)
+      const fluctuation = price * 0.01;
+      const minAmount = finalAmount - fluctuation;
+      const maxAmount = finalAmount + fluctuation;
+
+      // 組合結果輸出
+      let resultHTML = `
+        <p><strong>體積（立方厘米）:</strong> ${volume.toFixed(2)}</p>
+        <p><strong>體積重量（kg）:</strong> ${volumetricWeight.toFixed(2)}</p>
+        <p><strong>計費重量（kg）:</strong> ${billingWeight.toFixed(2)}</p>
+        <p><strong>國際運費（美元，含燃油附加費）:</strong> ${shippingCostUSDAdjusted.toFixed(2)}</p>
+        <p><strong>國際運費（新台幣）:</strong> ${shippingCostTWD.toFixed(2)}</p>
+        <p><strong>成交手續費（新台幣）:</strong> ${transactionFee.toFixed(2)}</p>
+        <p><strong>國際交易費（新台幣）:</strong> ${internationalFee.toFixed(2)}</p>
+        <p><strong>國內運費+包裝（新台幣）:</strong> ${(domesticShipping + packaging).toFixed(2)}</p>
+        <p><strong>進口稅費（新台幣）:</strong> ${tax.toFixed(2)}</p>
+        <p><strong>包裹保險費（新台幣）:</strong> ${insuranceFee.toFixed(2)}</p>
+        <p><strong>總成本（新台幣）:</strong> ${totalCost.toFixed(2)}</p>
+        <p class="final-amount">最終到手金額（新台幣）: <strong>${finalAmount.toFixed(2)}</strong></p>
+        <p><strong>考慮匯率波動後範圍（新台幣）:</strong> ${minAmount.toFixed(2)} - ${maxAmount.toFixed(2)}</p>
+      `;
+      if (finalAmount < 0) {
+        resultHTML += `<p class="warning">警告：最終到手金額為負數，請調整售價或成本！</p>`;
+      }
+      document.getElementById('result').innerHTML = resultHTML;
+    }
+  </script>
+</body>
+</html>
+
+
+
+
